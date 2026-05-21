@@ -1,3 +1,7 @@
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+import { getAuth } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { getFirestore } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
 const appId = typeof window.__app_id !== 'undefined' ? window.__app_id : (typeof __app_id !== 'undefined' ? __app_id : 'default-study-plan-2026');
 
 // User's concrete Firebase configuration
@@ -30,5 +34,23 @@ window.appId = appId;
 window.firebaseConfig = firebaseConfig;
 window.initialAuthToken = initialAuthToken;
 
-export { appId, firebaseConfig, initialAuthToken };
+let app = null;
+let auth = null;
+let db = null;
+
+if (firebaseConfig && Object.keys(firebaseConfig).length > 0) {
+    try {
+        app = initializeApp(firebaseConfig);
+        auth = getAuth(app);
+        db = getFirestore(app);
+        
+        window.app = app;
+        window.auth = auth;
+        window.db = db;
+    } catch (e) {
+        console.error("Failed to initialize Firebase services in config:", e);
+    }
+}
+
+export { appId, firebaseConfig, initialAuthToken, app, auth, db };
 

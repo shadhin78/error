@@ -3,10 +3,13 @@ import {
     setDoc,
     onSnapshot
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { db } from "./config.js";
 
 async function getTasksRef() {
     if (!window.userId) throw new Error("User not authenticated.");
-    return doc(window.db, 'artifacts', window.appId, 'users', window.userId, 'studyPlan', 'planData_2026_daily_reset_v5');
+    const firestoreDb = db || window.db;
+    if (!firestoreDb) throw new Error("Firestore DB not initialized.");
+    return doc(firestoreDb, 'artifacts', window.appId, 'users', window.userId, 'studyPlan', 'planData_2026_daily_reset_v5');
 }
 
 const showSync = (state) => {
@@ -38,7 +41,8 @@ const showSync = (state) => {
 };
 
 async function loadTasks() {
-    if (!window.db || !window.userId) { 
+    const firestoreDb = db || window.db;
+    if (!firestoreDb || !window.userId) { 
         window.isAppLoading = false;
         if (typeof window.renderUI === 'function') window.renderUI(); 
         return Promise.resolve(); 
@@ -261,7 +265,8 @@ async function saveTasks(immediate = false) {
         console.error("Failed to save to localStorage:", err);
     }
 
-    if (!window.db || !window.userId) {
+    const firestoreDb = db || window.db;
+    if (!firestoreDb || !window.userId) {
         // Local only mode: show instant sync visual feedback
         showSync('saving');
         setTimeout(() => {

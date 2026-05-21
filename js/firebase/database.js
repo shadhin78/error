@@ -41,10 +41,29 @@ const showSync = (state) => {
 };
 
 async function loadTasks() {
+    console.log("[DEBUG 3] BEFORE Firebase load");
     const firestoreDb = db || window.db;
     if (!firestoreDb || !window.userId) { 
+        console.log("Skipping Firebase load: db not ready or user not logged in.");
+        const hasLocal = typeof window.hasLocalDataLoaded === 'function' && window.hasLocalDataLoaded();
+        if (hasLocal) {
+            console.log("Offline fallback: successfully using local data.");
+        } else {
+            console.log("[DEBUG 9] WHEN initializing default state");
+            window.tasks = [];
+            window.customTracks = [];
+            console.log("[DEBUG 10] WHEN assigning syllabusStructure/customPrograms");
+            window.customPrograms = {};
+            window.syllabusStructure = {};
+        }
+        window.isHydrating = false;
+        window.isInitialLoad = false;
         window.isAppLoading = false;
-        if (typeof window.renderUI === 'function') window.renderUI(); 
+        if (typeof window.renderUI === 'function') {
+            console.log("[DEBUG 5] BEFORE renderUI()");
+            window.renderUI();
+            console.log("[DEBUG 6] AFTER renderUI()");
+        } 
         return Promise.resolve(); 
     }
     try {
@@ -52,7 +71,10 @@ async function loadTasks() {
         return new Promise((resolve) => {
             let isFirstSnapshot = true;
             onSnapshot(tasksRef, (docSnap) => {
+                console.log("[DEBUG 4] AFTER Firebase load");
                 let newTasks = window.tasks;
+                const hasLocal = typeof window.hasLocalDataLoaded === 'function' && window.hasLocalDataLoaded();
+
                 if (docSnap.exists()) {
                     const data = docSnap.data();
                     const cloudUpdatedAt = data.updatedAt || 0;
@@ -68,19 +90,15 @@ async function loadTasks() {
                         (data.tasks && data.tasks.length > 0)
                     );
 
-                    const hasLocalData = typeof window.hasLocalDataLoaded === 'function' && window.hasLocalDataLoaded();
-
-                    // Merge Conflict Resolution Engine
-                    if (hasLocalData && !hasCloudData) {
-                        console.log("Cloud state is empty/blank but active local state exists. Preserving local state and uploading upstream.");
-                        window.isAppLoading = false; // Temporarily unlock to let saveTasks succeed
-                        saveTasks(true);
-                    } else if (cloudUpdatedAt >= localUpdatedAt || !hasLocalData) {
-                        console.log("Cloud state is newer/equal or local state is empty. Merging cloud state into active state.");
+                    if (hasCloudData) {
+                        console.log("Cloud state contains valid data. Merging cloud state into active state.");
                         window.updatedAt = cloudUpdatedAt;
 
                         if (data.customTracks) window.customTracks = data.customTracks;
-                        if (data.customPrograms) window.customPrograms = data.customPrograms;
+                        if (data.customPrograms) {
+                            console.log("[DEBUG 10] WHEN assigning syllabusStructure/customPrograms");
+                            window.customPrograms = data.customPrograms;
+                        }
                         if (data.customActions) window.customActions = data.customActions;
                         if (typeof window.updateTrackDropdowns === 'function') window.updateTrackDropdowns();
 
@@ -114,6 +132,7 @@ async function loadTasks() {
                         }
 
                         if (data.customSyllabus) {
+                            console.log("[DEBUG 10] WHEN assigning syllabusStructure/customPrograms");
                             window.syllabusStructure = data.customSyllabus;
                             Object.keys(window.syllabusStructure).forEach(trackId => {
                                 window.syllabusStructure[trackId].forEach(s => { if (!s.program) s.program = "Default"; });
@@ -144,21 +163,50 @@ async function loadTasks() {
                             newTasks = [];
                         }
                         window.tasks = newTasks;
+
+                        window.isHydrating = false;
+                        window.isInitialLoad = false;
+                        window.isAppLoading = false;
                     } else {
-                        console.log("Local/InMemory state is newer than cloud state. Preserving local state and uploading upstream.");
-                        window.isAppLoading = false; // Temporarily unlock to let saveTasks succeed
-                        saveTasks(true);
+                        console.log("Cloud snapshot has empty/blank structures. Resolving fallbacks.");
+                        if (hasLocal) {
+                            console.log("Preferring valid local state over empty cloud doc.");
+                            window.isHydrating = false;
+                            window.isInitialLoad = false;
+                            window.isAppLoading = false;
+                            console.log("Syncing valid local state upstream to restore cloud copy...");
+                            saveTasks(true);
+                        } else {
+                            console.log("[DEBUG 9] WHEN initializing default state");
+                            window.tasks = [];
+                            window.customTracks = [];
+                            console.log("[DEBUG 10] WHEN assigning syllabusStructure/customPrograms");
+                            window.customPrograms = {};
+                            window.syllabusStructure = {};
+                            window.isHydrating = false;
+                            window.isInitialLoad = false;
+                            window.isAppLoading = false;
+                        }
                     }
                 } else {
-                    console.log("Cloud document does not exist yet.");
-                    if (typeof window.hasLocalDataLoaded === 'function' && window.hasLocalDataLoaded()) {
-                        console.log("Active local backup exists. Syncing local backup upstream...");
-                        window.isAppLoading = false; // Temporarily unlock to let saveTasks succeed
+                    console.log("Cloud document does not exist yet. Resolving fallbacks.");
+                    if (hasLocal) {
+                        console.log("Preferring valid local state over missing cloud doc.");
+                        window.isHydrating = false;
+                        window.isInitialLoad = false;
+                        window.isAppLoading = false;
+                        console.log("Syncing valid local state upstream to initialize remote document...");
                         saveTasks(true);
                     } else {
-                        console.log("No cloud or local state exists. Initializing clean empty state.");
-                        window.isAppLoading = false; // Temporarily unlock to let saveTasks succeed
-                        saveTasks(true);
+                        console.log("[DEBUG 9] WHEN initializing default state");
+                        window.tasks = [];
+                        window.customTracks = [];
+                        console.log("[DEBUG 10] WHEN assigning syllabusStructure/customPrograms");
+                        window.customPrograms = {};
+                        window.syllabusStructure = {};
+                        window.isHydrating = false;
+                        window.isInitialLoad = false;
+                        window.isAppLoading = false;
                     }
                 }
 
@@ -179,7 +227,6 @@ async function loadTasks() {
                 };
                 window.localDataJSON = JSON.stringify(currentPayload);
 
-                // ALWAYS persist to localStorage under both standard and legacy keys
                 try {
                     localStorage.setItem("projectx_data", window.localDataJSON);
                     const legacyKey = `study_dashboard_data_${window.appId}`;
@@ -188,32 +235,30 @@ async function loadTasks() {
                     console.error("Failed to update localStorage with Firebase data:", err);
                 }
 
-                // Release loading lock now that active state has been finalized and merged
-                window.isAppLoading = false;
-
-                if (window.isInitialLoad) {
-                    if (typeof window.renderUI === 'function') window.renderUI();
-                    window.isInitialLoad = false;
-                } else {
-                    requestAnimationFrame(() => {
-                        const scrollPos = window.scrollY; // Preserve scroll position
-                        if (typeof window.renderUI === 'function') window.renderUI();
-                        window.scrollTo(0, scrollPos); // Seamlessly restore scroll
-                        showSync('saved'); // Indicate remote fetch success
-                    });
-                }
-
                 if (isFirstSnapshot) {
+                    console.log("[DEBUG 5] BEFORE renderUI()");
+                    if (typeof window.renderUI === 'function') window.renderUI();
+                    console.log("[DEBUG 6] AFTER renderUI()");
                     isFirstSnapshot = false;
                     resolve();
+                } else {
+                    requestAnimationFrame(() => {
+                        const scrollPos = window.scrollY;
+                        console.log("[DEBUG 5] BEFORE renderUI()");
+                        if (typeof window.renderUI === 'function') window.renderUI();
+                        console.log("[DEBUG 6] AFTER renderUI()");
+                        window.scrollTo(0, scrollPos);
+                        showSync('saved');
+                    });
                 }
             }, (error) => {
                 console.error("Sync listener error:", error);
+                window.isHydrating = false;
+                window.isInitialLoad = false;
                 window.isAppLoading = false;
-                if (window.isInitialLoad) {
-                    if (typeof window.renderUI === 'function') window.renderUI();
-                    window.isInitialLoad = false;
-                }
+                console.log("[DEBUG 5] BEFORE renderUI()");
+                if (typeof window.renderUI === 'function') window.renderUI();
+                console.log("[DEBUG 6] AFTER renderUI()");
                 if (isFirstSnapshot) {
                     isFirstSnapshot = false;
                     resolve();
@@ -222,16 +267,22 @@ async function loadTasks() {
         });
     } catch (error) {
         console.error("Load tasks error:", error);
+        window.isHydrating = false;
+        window.isInitialLoad = false;
         window.isAppLoading = false;
-        if (window.isInitialLoad) {
-            if (typeof window.renderUI === 'function') window.renderUI();
-            window.isInitialLoad = false;
-        }
+        console.log("[DEBUG 5] BEFORE renderUI()");
+        if (typeof window.renderUI === 'function') window.renderUI();
+        console.log("[DEBUG 6] AFTER renderUI()");
         return Promise.resolve();
     }
 }
 
 async function saveTasks(immediate = false) {
+    console.log("[DEBUG 7] BEFORE saveToCloud()");
+    if (window.isHydrating) {
+        console.log("Blocking saveTasks() because the app is currently hydrating / loading...");
+        return;
+    }
     if (window.isAppLoading) {
         console.log("Blocking saveTasks() because the app is still loading and syncing...");
         return;
@@ -283,6 +334,7 @@ async function saveTasks(immediate = false) {
             const tasksRef = await getTasksRef();
             // JSON parsing creates a clean object, bypassing Firebase's expensive deep object traversal on massive arrays
             await setDoc(tasksRef, JSON.parse(window.localDataJSON));
+            console.log("[DEBUG 8] AFTER saveToCloud()");
             showSync('saved');
         } catch (error) {
             console.error("Firebase sync error:", error);

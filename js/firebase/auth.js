@@ -128,6 +128,9 @@ function initAuthListener() {
 
 // Orchestrator initialization
 async function initializeFirebase() {
+    window.isHydrating = true;
+    window.isInitialLoad = true;
+
     // Populate UI from local backup first for instant hydration
     window.loadLocalData();
 
@@ -138,8 +141,14 @@ async function initializeFirebase() {
     setTimeout(() => {
         if (window.isAppLoading) {
             console.warn("Firebase snapshot took too long or offline. Falling back to local data and unlocking UI.");
+            window.isHydrating = false;
+            window.isInitialLoad = false;
             window.isAppLoading = false;
-            if (typeof window.renderUI === 'function') window.renderUI();
+            if (typeof window.renderUI === 'function') {
+                console.log("[DEBUG 5] BEFORE renderUI()");
+                window.renderUI();
+                console.log("[DEBUG 6] AFTER renderUI()");
+            }
         }
     }, 3500);
 
@@ -153,13 +162,25 @@ async function initializeFirebase() {
             }
         } else {
             // Local-only mode
+            window.isHydrating = false;
+            window.isInitialLoad = false;
             window.isAppLoading = false;
-            if (typeof window.renderUI === 'function') window.renderUI();
+            if (typeof window.renderUI === 'function') {
+                console.log("[DEBUG 5] BEFORE renderUI()");
+                window.renderUI();
+                console.log("[DEBUG 6] AFTER renderUI()");
+            }
         }
     } catch (error) {
         console.error("Firebase auth initialization failed, falling back to local-only mode:", error);
+        window.isHydrating = false;
+        window.isInitialLoad = false;
         window.isAppLoading = false;
-        if (typeof window.renderUI === 'function') window.renderUI();
+        if (typeof window.renderUI === 'function') {
+            console.log("[DEBUG 5] BEFORE renderUI()");
+            window.renderUI();
+            console.log("[DEBUG 6] AFTER renderUI()");
+        }
     }
 }
 

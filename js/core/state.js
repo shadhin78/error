@@ -58,6 +58,7 @@ window.globalEndDate = null;
 window.isAppLoading = true;
 window.updatedAt = 0;
 window.isInitialLoad = true;
+window.isHydrating = true;
 window.currentFilter = 'All';
 
 window.PLAN_START_DATE = new Date();
@@ -66,6 +67,8 @@ window.PLAN_END_DATE = new Date();
 window.PLAN_END_DATE.setDate(window.PLAN_END_DATE.getDate() + 29);
 window.PLAN_END_DATE.setHours(23, 59, 59, 999);
 
+console.log("[DEBUG 9] WHEN initializing default state");
+console.log("[DEBUG 10] WHEN assigning syllabusStructure/customPrograms");
 window.syllabusStructure = {};
 window.customPrograms = {};
 window.totalStaticChapters = 0;

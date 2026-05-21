@@ -1,4 +1,5 @@
 function loadLocalData() {
+    console.log("[DEBUG 1] BEFORE localStorage load");
     try {
         let saved = localStorage.getItem("projectx_data");
         if (!saved) {
@@ -6,13 +7,17 @@ function loadLocalData() {
             saved = localStorage.getItem(legacyKey);
         }
         if (saved) {
+            console.log("[DEBUG 2] AFTER localStorage load");
             const data = JSON.parse(saved);
             
             if (data.updatedAt) window.updatedAt = data.updatedAt;
             else window.updatedAt = 0;
 
             if (data.customTracks) window.customTracks = data.customTracks;
-            if (data.customPrograms) window.customPrograms = data.customPrograms;
+            if (data.customPrograms) {
+                console.log("[DEBUG 10] WHEN assigning syllabusStructure/customPrograms");
+                window.customPrograms = data.customPrograms;
+            }
             if (data.customActions) window.customActions = data.customActions;
             if (window.updateTrackDropdowns) window.updateTrackDropdowns();
 
@@ -46,6 +51,7 @@ function loadLocalData() {
             }
 
             if (data.customSyllabus) {
+                console.log("[DEBUG 10] WHEN assigning syllabusStructure/customPrograms");
                 window.syllabusStructure = data.customSyllabus;
                 Object.keys(window.syllabusStructure).forEach(trackId => {
                     window.syllabusStructure[trackId].forEach(s => { if (!s.program) s.program = "Default"; });

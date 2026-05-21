@@ -51,6 +51,7 @@ function renderUI() {
         console.log("Blocking renderUI() because the app is still loading and syncing...");
         return;
     }
+    console.log("[DEBUG 5] BEFORE renderUI()");
     const loader = document.getElementById('loading-message');
     if (loader) loader.classList.add('hidden');
     const dashContent = document.getElementById('dashboard-content');
@@ -112,6 +113,7 @@ function renderUI() {
     if (document.getElementById('daily-actions-db-modal') && !document.getElementById('daily-actions-db-modal').classList.contains('hidden')) {
         if (typeof window.openDailyActionsDBModal === 'function') window.openDailyActionsDBModal();
     }
+    console.log("[DEBUG 6] AFTER renderUI()");
 }
 
 function setupFocusTodayButton() {

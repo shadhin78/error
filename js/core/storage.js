@@ -1,6 +1,10 @@
 function loadLocalData() {
     console.log("[DEBUG 1] BEFORE localStorage load");
     try {
+        console.log(
+          "LOCAL LOAD",
+          localStorage.getItem("projectx_data") ? JSON.parse(localStorage.getItem("projectx_data")) : null
+        );
         let saved = localStorage.getItem("projectx_data");
         if (!saved) {
             const legacyKey = `study_dashboard_data_${window.appId}`;

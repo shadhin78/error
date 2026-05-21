@@ -9,6 +9,8 @@ async function getTasksRef() {
     if (!window.userId) throw new Error("User not authenticated.");
     const firestoreDb = db || window.db;
     if (!firestoreDb) throw new Error("Firestore DB not initialized.");
+    const path = `artifacts/${window.appId}/users/${window.userId}/studyPlan/planData_2026_daily_reset_v5`;
+    console.log("USING FIREBASE PATH", path);
     return doc(firestoreDb, 'artifacts', window.appId, 'users', window.userId, 'studyPlan', 'planData_2026_daily_reset_v5');
 }
 
@@ -41,7 +43,7 @@ const showSync = (state) => {
 };
 
 async function loadTasks() {
-    console.log("[DEBUG 3] BEFORE Firebase load");
+    console.log("LOAD START", window.currentUser?.uid || window.userId);
     const firestoreDb = db || window.db;
     if (!firestoreDb || !window.userId) { 
         console.log("Skipping Firebase load: db not ready or user not logged in.");
@@ -56,14 +58,17 @@ async function loadTasks() {
             window.customPrograms = {};
             window.syllabusStructure = {};
         }
+        
+        // 6. renderUI()
+        if (typeof window.renderUI === 'function') {
+            window.renderUI();
+        }
+        
+        // 7. window.isHydrating = false;
         window.isHydrating = false;
         window.isInitialLoad = false;
         window.isAppLoading = false;
-        if (typeof window.renderUI === 'function') {
-            console.log("[DEBUG 5] BEFORE renderUI()");
-            window.renderUI();
-            console.log("[DEBUG 6] AFTER renderUI()");
-        } 
+        
         return Promise.resolve(); 
     }
     try {
@@ -71,7 +76,7 @@ async function loadTasks() {
         return new Promise((resolve) => {
             let isFirstSnapshot = true;
             onSnapshot(tasksRef, (docSnap) => {
-                console.log("[DEBUG 4] AFTER Firebase load");
+                console.log("CLOUD DATA", docSnap.exists() ? docSnap.data() : null);
                 let newTasks = window.tasks;
                 const hasLocal = typeof window.hasLocalDataLoaded === 'function' && window.hasLocalDataLoaded();
 
@@ -164,18 +169,10 @@ async function loadTasks() {
                         }
                         window.tasks = newTasks;
 
-                        window.isHydrating = false;
-                        window.isInitialLoad = false;
-                        window.isAppLoading = false;
                     } else {
                         console.log("Cloud snapshot has empty/blank structures. Resolving fallbacks.");
                         if (hasLocal) {
                             console.log("Preferring valid local state over empty cloud doc.");
-                            window.isHydrating = false;
-                            window.isInitialLoad = false;
-                            window.isAppLoading = false;
-                            console.log("Syncing valid local state upstream to restore cloud copy...");
-                            saveTasks(true);
                         } else {
                             console.log("[DEBUG 9] WHEN initializing default state");
                             window.tasks = [];
@@ -183,20 +180,12 @@ async function loadTasks() {
                             console.log("[DEBUG 10] WHEN assigning syllabusStructure/customPrograms");
                             window.customPrograms = {};
                             window.syllabusStructure = {};
-                            window.isHydrating = false;
-                            window.isInitialLoad = false;
-                            window.isAppLoading = false;
                         }
                     }
                 } else {
                     console.log("Cloud document does not exist yet. Resolving fallbacks.");
                     if (hasLocal) {
                         console.log("Preferring valid local state over missing cloud doc.");
-                        window.isHydrating = false;
-                        window.isInitialLoad = false;
-                        window.isAppLoading = false;
-                        console.log("Syncing valid local state upstream to initialize remote document...");
-                        saveTasks(true);
                     } else {
                         console.log("[DEBUG 9] WHEN initializing default state");
                         window.tasks = [];
@@ -204,9 +193,6 @@ async function loadTasks() {
                         console.log("[DEBUG 10] WHEN assigning syllabusStructure/customPrograms");
                         window.customPrograms = {};
                         window.syllabusStructure = {};
-                        window.isHydrating = false;
-                        window.isInitialLoad = false;
-                        window.isAppLoading = false;
                     }
                 }
 
@@ -236,29 +222,42 @@ async function loadTasks() {
                 }
 
                 if (isFirstSnapshot) {
-                    console.log("[DEBUG 5] BEFORE renderUI()");
-                    if (typeof window.renderUI === 'function') window.renderUI();
-                    console.log("[DEBUG 6] AFTER renderUI()");
+                    // 6. renderUI()
+                    window.isAppLoading = false;
+                    if (typeof window.renderUI === 'function') {
+                        window.renderUI();
+                    }
+                    
+                    // 7. window.isHydrating = false;
+                    window.isHydrating = false;
+                    window.isInitialLoad = false;
+
+                    // Sync local state upstream after hydration complete if needed
+                    if (hasLocal && (!docSnap.exists() || !docSnap.data() || Object.keys(docSnap.data()).length === 0)) {
+                        console.log("Syncing valid local state upstream after hydration complete...");
+                        saveTasks(true);
+                    }
+
                     isFirstSnapshot = false;
                     resolve();
                 } else {
                     requestAnimationFrame(() => {
                         const scrollPos = window.scrollY;
-                        console.log("[DEBUG 5] BEFORE renderUI()");
-                        if (typeof window.renderUI === 'function') window.renderUI();
-                        console.log("[DEBUG 6] AFTER renderUI()");
+                        if (typeof window.renderUI === 'function') {
+                            window.renderUI();
+                        }
                         window.scrollTo(0, scrollPos);
                         showSync('saved');
                     });
                 }
             }, (error) => {
                 console.error("Sync listener error:", error);
+                window.isAppLoading = false;
+                if (typeof window.renderUI === 'function') {
+                    window.renderUI();
+                }
                 window.isHydrating = false;
                 window.isInitialLoad = false;
-                window.isAppLoading = false;
-                console.log("[DEBUG 5] BEFORE renderUI()");
-                if (typeof window.renderUI === 'function') window.renderUI();
-                console.log("[DEBUG 6] AFTER renderUI()");
                 if (isFirstSnapshot) {
                     isFirstSnapshot = false;
                     resolve();
@@ -267,31 +266,30 @@ async function loadTasks() {
         });
     } catch (error) {
         console.error("Load tasks error:", error);
+        window.isAppLoading = false;
+        if (typeof window.renderUI === 'function') {
+            window.renderUI();
+        }
         window.isHydrating = false;
         window.isInitialLoad = false;
-        window.isAppLoading = false;
-        console.log("[DEBUG 5] BEFORE renderUI()");
-        if (typeof window.renderUI === 'function') window.renderUI();
-        console.log("[DEBUG 6] AFTER renderUI()");
         return Promise.resolve();
     }
 }
 
 async function saveTasks(immediate = false) {
-    console.log("[DEBUG 7] BEFORE saveToCloud()");
     if (window.isHydrating) {
-        console.log("Blocking saveTasks() because the app is currently hydrating / loading...");
+        console.log("SAVE BLOCKED DURING HYDRATION");
         return;
     }
     if (window.isAppLoading) {
-        console.log("Blocking saveTasks() because the app is still loading and syncing...");
+        console.log("SAVE BLOCKED DURING HYDRATION");
         return;
     }
 
     // Update active timestamp
     window.updatedAt = Date.now();
 
-    const payload = {
+    const appState = {
         updatedAt: window.updatedAt,
         tasks: window.tasks,
         customSyllabus: window.syllabusStructure,
@@ -305,10 +303,17 @@ async function saveTasks(immediate = false) {
         dashboardConfig: window.dashboardConfig,
         subjectColors: window.subjectColors
     };
-    window.localDataJSON = JSON.stringify(payload);
+
+    console.log("SAVE START", {
+      uid: window.currentUser?.uid || window.userId,
+      data: structuredClone(appState)
+    });
+
+    window.localDataJSON = JSON.stringify(appState);
 
     // ALWAYS persist to localStorage under both standard and legacy keys
     try {
+        console.log("LOCAL SAVE", structuredClone(appState));
         localStorage.setItem("projectx_data", window.localDataJSON);
         const legacyKey = `study_dashboard_data_${window.appId}`;
         localStorage.setItem(legacyKey, window.localDataJSON);
@@ -322,6 +327,7 @@ async function saveTasks(immediate = false) {
         showSync('saving');
         setTimeout(() => {
             showSync('saved');
+            console.log("SAVE SUCCESS");
         }, 300);
         return;
     }
@@ -334,10 +340,10 @@ async function saveTasks(immediate = false) {
             const tasksRef = await getTasksRef();
             // JSON parsing creates a clean object, bypassing Firebase's expensive deep object traversal on massive arrays
             await setDoc(tasksRef, JSON.parse(window.localDataJSON));
-            console.log("[DEBUG 8] AFTER saveToCloud()");
+            console.log("SAVE SUCCESS");
             showSync('saved');
         } catch (error) {
-            console.error("Firebase sync error:", error);
+            console.error("SAVE FAILED", error);
             showSync('error');
         } finally {
             window.isSaving = false;

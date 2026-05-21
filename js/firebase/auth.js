@@ -116,11 +116,25 @@ function initAuthListener() {
             window.userId = null;
             renderAuthWidget();
 
-            // Auto-sign in anonymously for guest usage tracking and storage security
-            try {
-                await signInAnonymously(firebaseAuth);
-            } catch (e) {
-                console.error("Fallback anonymous auth failed:", e);
+            if (window.isInitialLoad) {
+                // Defer anonymous sign in to avoid interrupting Google session recovery
+                setTimeout(async () => {
+                    const currentAuthUser = firebaseAuth.currentUser;
+                    if (!currentAuthUser && !window.userId) {
+                        console.log("No user session recovered after delay. Signing in anonymously...");
+                        try {
+                            await signInAnonymously(firebaseAuth);
+                        } catch (e) {
+                            console.error("Fallback anonymous auth failed:", e);
+                        }
+                    }
+                }, 1500);
+            } else {
+                try {
+                    await signInAnonymously(firebaseAuth);
+                } catch (e) {
+                    console.error("Fallback anonymous auth failed:", e);
+                }
             }
         }
     });
@@ -130,6 +144,7 @@ function initAuthListener() {
 async function initializeFirebase() {
     window.isHydrating = true;
     window.isInitialLoad = true;
+    window.isAppLoading = true;
 
     // Populate UI from local backup first for instant hydration
     window.loadLocalData();
@@ -141,14 +156,21 @@ async function initializeFirebase() {
     setTimeout(() => {
         if (window.isAppLoading) {
             console.warn("Firebase snapshot took too long or offline. Falling back to local data and unlocking UI.");
+            const hasLocal = typeof window.hasLocalDataLoaded === 'function' && window.hasLocalDataLoaded();
+            if (!hasLocal) {
+                console.log("[DEBUG 9] WHEN initializing default state");
+                window.tasks = [];
+                window.customTracks = [];
+                console.log("[DEBUG 10] WHEN assigning syllabusStructure/customPrograms");
+                window.customPrograms = {};
+                window.syllabusStructure = {};
+            }
+            if (typeof window.renderUI === 'function') {
+                window.renderUI();
+            }
             window.isHydrating = false;
             window.isInitialLoad = false;
             window.isAppLoading = false;
-            if (typeof window.renderUI === 'function') {
-                console.log("[DEBUG 5] BEFORE renderUI()");
-                window.renderUI();
-                console.log("[DEBUG 6] AFTER renderUI()");
-            }
         }
     }, 3500);
 
@@ -162,25 +184,39 @@ async function initializeFirebase() {
             }
         } else {
             // Local-only mode
+            const hasLocal = typeof window.hasLocalDataLoaded === 'function' && window.hasLocalDataLoaded();
+            if (!hasLocal) {
+                console.log("[DEBUG 9] WHEN initializing default state");
+                window.tasks = [];
+                window.customTracks = [];
+                console.log("[DEBUG 10] WHEN assigning syllabusStructure/customPrograms");
+                window.customPrograms = {};
+                window.syllabusStructure = {};
+            }
+            if (typeof window.renderUI === 'function') {
+                window.renderUI();
+            }
             window.isHydrating = false;
             window.isInitialLoad = false;
             window.isAppLoading = false;
-            if (typeof window.renderUI === 'function') {
-                console.log("[DEBUG 5] BEFORE renderUI()");
-                window.renderUI();
-                console.log("[DEBUG 6] AFTER renderUI()");
-            }
         }
     } catch (error) {
         console.error("Firebase auth initialization failed, falling back to local-only mode:", error);
+        const hasLocal = typeof window.hasLocalDataLoaded === 'function' && window.hasLocalDataLoaded();
+        if (!hasLocal) {
+            console.log("[DEBUG 9] WHEN initializing default state");
+            window.tasks = [];
+            window.customTracks = [];
+            console.log("[DEBUG 10] WHEN assigning syllabusStructure/customPrograms");
+            window.customPrograms = {};
+            window.syllabusStructure = {};
+        }
+        if (typeof window.renderUI === 'function') {
+            window.renderUI();
+        }
         window.isHydrating = false;
         window.isInitialLoad = false;
         window.isAppLoading = false;
-        if (typeof window.renderUI === 'function') {
-            console.log("[DEBUG 5] BEFORE renderUI()");
-            window.renderUI();
-            console.log("[DEBUG 6] AFTER renderUI()");
-        }
     }
 }
 

@@ -38,70 +38,116 @@ const showSync = (state) => {
 };
 
 async function loadTasks() {
-    if (!window.db || !window.userId) { if (typeof window.renderUI === 'function') window.renderUI(); return; }
+    if (!window.db || !window.userId) { 
+        window.isAppLoading = false;
+        if (typeof window.renderUI === 'function') window.renderUI(); 
+        return; 
+    }
     try {
         const tasksRef = await getTasksRef();
         onSnapshot(tasksRef, (docSnap) => {
             let newTasks = window.tasks;
             if (docSnap.exists()) {
                 const data = docSnap.data();
+                const cloudUpdatedAt = data.updatedAt || 0;
+                const localUpdatedAt = window.updatedAt || 0;
 
-                if (data.customTracks) window.customTracks = data.customTracks;
-                if (data.customPrograms) window.customPrograms = data.customPrograms;
-                if (data.customActions) window.customActions = data.customActions;
-                if (typeof window.updateTrackDropdowns === 'function') window.updateTrackDropdowns();
+                console.log(`Synchronization Sync Snapshot received. Cloud updatedAt: ${cloudUpdatedAt}, Local updatedAt: ${localUpdatedAt}`);
 
-                if (data.paceGoals) window.paceGoals = data.paceGoals;
-                else window.paceGoals = [];
+                // Merge Conflict Resolution Engine
+                if (cloudUpdatedAt >= localUpdatedAt) {
+                    console.log("Cloud state is newer or equal. Merging cloud state into active state.");
+                    window.updatedAt = cloudUpdatedAt;
 
-                if (data.passedItems) window.passedItems = data.passedItems;
-                else window.passedItems = { programs: [], subjects: [] };
+                    if (data.customTracks) window.customTracks = data.customTracks;
+                    if (data.customPrograms) window.customPrograms = data.customPrograms;
+                    if (data.customActions) window.customActions = data.customActions;
+                    if (typeof window.updateTrackDropdowns === 'function') window.updateTrackDropdowns();
 
-                if (data.revisionData) window.revisionData = data.revisionData;
-                else window.revisionData = { active: [], progress: {} };
+                    if (data.paceGoals) window.paceGoals = data.paceGoals;
+                    else window.paceGoals = [];
 
-                if (data.subjectTimeLinks) window.subjectTimeLinks = data.subjectTimeLinks;
-                else window.subjectTimeLinks = {};
+                    if (data.passedItems) window.passedItems = data.passedItems;
+                    else window.passedItems = { programs: [], subjects: [] };
 
-                if (data.successResults) window.successResults = data.successResults;
-                else window.successResults = [];
+                    if (data.revisionData) window.revisionData = data.revisionData;
+                    else window.revisionData = { active: [], progress: {} };
 
-                if (data.subjectColors) {
-                    Object.assign(window.subjectColors, data.subjectColors);
-                }
+                    if (data.subjectTimeLinks) window.subjectTimeLinks = data.subjectTimeLinks;
+                    else window.subjectTimeLinks = {};
 
-                if (data.customSyllabus) {
-                    window.syllabusStructure = data.customSyllabus;
-                    Object.keys(window.syllabusStructure).forEach(trackId => {
-                        window.syllabusStructure[trackId].forEach(s => { if (!s.program) s.program = "Default"; });
-                    });
-                    if (typeof window.recalculateTotals === 'function') window.recalculateTotals();
-                    if (window.isInitialLoad && typeof window.switchSysTab === 'function') window.switchSysTab('track');
-                }
+                    if (data.successResults) window.successResults = data.successResults;
+                    else window.successResults = [];
 
-                if (data.tasks && data.tasks.length > 0) {
-                    newTasks = data.tasks.map(t => {
-                        const formatted = { ...t };
-                        if (window.customActions) {
-                            window.customActions.forEach(a => { formatted[a.id] = formatted[a.id] === true; });
-                        }
-                        if (formatted.type === 'study' && !formatted.trackTasks) {
-                            formatted.trackTasks = {};
-                        }
-                        return formatted;
-                    });
-
-                    const lastTask = newTasks[newTasks.length - 1];
-                    if (lastTask && lastTask.id) {
-                        const newEndDate = new Date(window.PLAN_START_DATE.getTime());
-                        newEndDate.setDate(newEndDate.getDate() + (lastTask.id - 1));
-                        window.PLAN_END_DATE = newEndDate;
+                    if (data.subjectColors) {
+                        Object.assign(window.subjectColors, data.subjectColors);
                     }
-                } else { if (window.isInitialLoad) saveTasks(true); }
-            } else { if (window.isInitialLoad) saveTasks(true); }
+
+                    if (data.dashboardConfig) {
+                        window.dashboardConfig = data.dashboardConfig;
+                        if (window.safeSetText) {
+                            window.safeSetText('dash-top-tag', window.dashboardConfig.topTag || '');
+                            window.safeSetText('dash-main-title', window.dashboardConfig.mainTitle || '');
+                            window.safeSetText('dash-sub-title', window.dashboardConfig.subTitle || '');
+                        }
+                        document.title = `${window.dashboardConfig.topTag || ''} - ${window.dashboardConfig.mainTitle || ''}`;
+                    }
+
+                    if (data.customSyllabus) {
+                        window.syllabusStructure = data.customSyllabus;
+                        Object.keys(window.syllabusStructure).forEach(trackId => {
+                            window.syllabusStructure[trackId].forEach(s => { if (!s.program) s.program = "Default"; });
+                        });
+                        if (typeof window.recalculateTotals === 'function') window.recalculateTotals();
+                        if (window.isInitialLoad && typeof window.switchSysTab === 'function') window.switchSysTab('track');
+                    }
+
+                    if (data.tasks && data.tasks.length > 0) {
+                        newTasks = data.tasks.map(t => {
+                            const formatted = { ...t };
+                            if (window.customActions) {
+                                window.customActions.forEach(a => { formatted[a.id] = formatted[a.id] === true; });
+                            }
+                            if (formatted.type === 'study' && !formatted.trackTasks) {
+                                formatted.trackTasks = {};
+                            }
+                            return formatted;
+                        });
+
+                        const lastTask = newTasks[newTasks.length - 1];
+                        if (lastTask && lastTask.id) {
+                            const newEndDate = new Date(window.PLAN_START_DATE.getTime());
+                            newEndDate.setDate(newEndDate.getDate() + (lastTask.id - 1));
+                            window.PLAN_END_DATE = newEndDate;
+                        }
+                    } else {
+                        newTasks = [];
+                    }
+                    window.tasks = newTasks;
+                } else {
+                    console.log("Local/InMemory state is newer than cloud state. Preserving local state and uploading upstream.");
+                    // Keep in-memory/local state and immediately trigger upstream sync
+                    window.isAppLoading = false; // Temporarily unlock to let saveTasks succeed
+                    saveTasks(true);
+                    window.isAppLoading = false;
+                    return;
+                }
+            } else {
+                console.log("Cloud document does not exist yet.");
+                if (window.updatedAt > 0 || window.tasks.length > 0) {
+                    console.log("Active local backup exists. Syncing local backup upstream...");
+                    window.isAppLoading = false; // Temporarily unlock to let saveTasks succeed
+                    saveTasks(true);
+                } else {
+                    console.log("No cloud or local state exists. Initializing clean empty state.");
+                    window.isAppLoading = false; // Temporarily unlock to let saveTasks succeed
+                    saveTasks(true);
+                }
+            }
 
             const currentPayload = {
-                tasks: newTasks,
+                updatedAt: window.updatedAt,
+                tasks: window.tasks,
                 customTracks: window.customTracks,
                 customSyllabus: window.syllabusStructure,
                 customPrograms: window.customPrograms,
@@ -114,19 +160,19 @@ async function loadTasks() {
                 dashboardConfig: window.dashboardConfig,
                 subjectColors: window.subjectColors
             };
-            const newTasksJSON = JSON.stringify(currentPayload);
-            if (newTasksJSON === window.localDataJSON && !window.isInitialLoad) return;
+            window.localDataJSON = JSON.stringify(currentPayload);
 
-            window.tasks = newTasks;
-            window.localDataJSON = newTasksJSON;
-
-            // Keep localStorage updated with Firebase data
+            // ALWAYS persist to localStorage under both standard and legacy keys
             try {
-                const localKey = `study_dashboard_data_${window.appId}`;
-                localStorage.setItem(localKey, window.localDataJSON);
+                localStorage.setItem("projectx_data", window.localDataJSON);
+                const legacyKey = `study_dashboard_data_${window.appId}`;
+                localStorage.setItem(legacyKey, window.localDataJSON);
             } catch (err) {
                 console.error("Failed to update localStorage with Firebase data:", err);
             }
+
+            // Release loading lock now that active state has been finalized and merged
+            window.isAppLoading = false;
 
             if (window.isInitialLoad) {
                 if (typeof window.renderUI === 'function') window.renderUI();
@@ -141,6 +187,7 @@ async function loadTasks() {
             }
         }, (error) => {
             console.error("Sync listener error:", error);
+            window.isAppLoading = false;
             if (window.isInitialLoad) {
                 if (typeof window.renderUI === 'function') window.renderUI();
                 window.isInitialLoad = false;
@@ -148,6 +195,7 @@ async function loadTasks() {
         });
     } catch (error) {
         console.error("Load tasks error:", error);
+        window.isAppLoading = false;
         if (window.isInitialLoad) {
             if (typeof window.renderUI === 'function') window.renderUI();
             window.isInitialLoad = false;
@@ -156,7 +204,16 @@ async function loadTasks() {
 }
 
 async function saveTasks(immediate = false) {
+    if (window.isAppLoading) {
+        console.log("Blocking saveTasks() because the app is still loading and syncing...");
+        return;
+    }
+
+    // Update active timestamp
+    window.updatedAt = Date.now();
+
     const payload = {
+        updatedAt: window.updatedAt,
         tasks: window.tasks,
         customSyllabus: window.syllabusStructure,
         customPrograms: window.customPrograms,
@@ -171,10 +228,11 @@ async function saveTasks(immediate = false) {
     };
     window.localDataJSON = JSON.stringify(payload);
 
-    // ALWAYS persist to localStorage as a robust local backup & offline storage
+    // ALWAYS persist to localStorage under both standard and legacy keys
     try {
-        const localKey = `study_dashboard_data_${window.appId}`;
-        localStorage.setItem(localKey, window.localDataJSON);
+        localStorage.setItem("projectx_data", window.localDataJSON);
+        const legacyKey = `study_dashboard_data_${window.appId}`;
+        localStorage.setItem(legacyKey, window.localDataJSON);
     } catch (err) {
         console.error("Failed to save to localStorage:", err);
     }

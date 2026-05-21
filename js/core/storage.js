@@ -1,10 +1,16 @@
 function loadLocalData() {
     try {
-        const localKey = `study_dashboard_data_${window.appId}`;
-        const saved = localStorage.getItem(localKey);
+        let saved = localStorage.getItem("projectx_data");
+        if (!saved) {
+            const legacyKey = `study_dashboard_data_${window.appId}`;
+            saved = localStorage.getItem(legacyKey);
+        }
         if (saved) {
             const data = JSON.parse(saved);
             
+            if (data.updatedAt) window.updatedAt = data.updatedAt;
+            else window.updatedAt = 0;
+
             if (data.customTracks) window.customTracks = data.customTracks;
             if (data.customPrograms) window.customPrograms = data.customPrograms;
             if (data.customActions) window.customActions = data.customActions;

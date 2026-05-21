@@ -10,11 +10,8 @@ import {
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 async function initializeFirebase() {
-    // First load from localStorage to populate UI immediately and ensure zero latency / offline support
+    // First load from localStorage to populate UI immediately in memory and ensure zero latency / offline support
     const hasLocalData = window.loadLocalData();
-    if (hasLocalData) {
-        if (typeof window.renderUI === 'function') window.renderUI();
-    }
 
     try {
         if (Object.keys(window.firebaseConfig).length > 0) {
@@ -38,14 +35,14 @@ async function initializeFirebase() {
 
             if (window.initialAuthToken) await signInWithCustomToken(window.auth, window.initialAuthToken);
         } else { 
-            if (!hasLocalData) {
-                if (typeof window.renderUI === 'function') window.renderUI();
-            }
+            // Local-only mode
+            window.isAppLoading = false;
+            if (typeof window.renderUI === 'function') window.renderUI();
         }
     } catch (error) { 
-        if (!hasLocalData) {
-            if (typeof window.renderUI === 'function') window.renderUI(); 
-        }
+        console.error("Firebase initialization failed, falling back to local-only mode:", error);
+        window.isAppLoading = false;
+        if (typeof window.renderUI === 'function') window.renderUI(); 
     }
 }
 

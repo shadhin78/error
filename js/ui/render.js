@@ -47,6 +47,10 @@ function updateGlobalDates() {
 }
 
 function renderUI() {
+    if (window.isAppLoading) {
+        console.log("Blocking renderUI() because the app is still loading and syncing...");
+        return;
+    }
     const loader = document.getElementById('loading-message');
     if (loader) loader.classList.add('hidden');
     const dashContent = document.getElementById('dashboard-content');

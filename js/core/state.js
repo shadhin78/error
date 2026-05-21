@@ -55,6 +55,8 @@ window.paceGoals = [];
 window.globalStartDate = null;
 window.globalEndDate = null;
 
+window.isAppLoading = true;
+window.updatedAt = 0;
 window.isInitialLoad = true;
 window.currentFilter = 'All';
 

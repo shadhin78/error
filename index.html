@@ -353,7 +353,87 @@
         tasks = defaultTasks;
         recalculateTotals();
 
+        function loadLocalData() {
+            try {
+                const localKey = `study_dashboard_data_${appId}`;
+                const saved = localStorage.getItem(localKey);
+                if (saved) {
+                    const data = JSON.parse(saved);
+                    
+                    if (data.customTracks) window.customTracks = data.customTracks;
+                    if (data.customPrograms) window.customPrograms = data.customPrograms;
+                    if (data.customActions) window.customActions = data.customActions;
+                    if (window.updateTrackDropdowns) window.updateTrackDropdowns();
+
+                    if (data.paceGoals) window.paceGoals = data.paceGoals;
+                    else window.paceGoals = [];
+
+                    if (data.passedItems) window.passedItems = data.passedItems;
+                    else window.passedItems = { programs: [], subjects: [] };
+
+                    if (data.revisionData) window.revisionData = data.revisionData;
+                    else window.revisionData = { active: [], progress: {} };
+
+                    if (data.subjectTimeLinks) window.subjectTimeLinks = data.subjectTimeLinks;
+                    else window.subjectTimeLinks = {};
+
+                    if (data.successResults) window.successResults = data.successResults;
+                    else window.successResults = [];
+
+                    if (data.subjectColors) {
+                        Object.assign(subjectColors, data.subjectColors);
+                    }
+
+                    if (data.dashboardConfig) {
+                        window.dashboardConfig = data.dashboardConfig;
+                        safeSetText('dash-top-tag', window.dashboardConfig.topTag || '');
+                        safeSetText('dash-main-title', window.dashboardConfig.mainTitle || '');
+                        safeSetText('dash-sub-title', window.dashboardConfig.subTitle || '');
+                        document.title = `${window.dashboardConfig.topTag || ''} - ${window.dashboardConfig.mainTitle || ''}`;
+                    }
+
+                    if (data.customSyllabus) {
+                        syllabusStructure = data.customSyllabus;
+                        Object.keys(syllabusStructure).forEach(trackId => {
+                            syllabusStructure[trackId].forEach(s => { if (!s.program) s.program = "Default"; });
+                        });
+                        recalculateTotals();
+                    }
+
+                    if (data.tasks && data.tasks.length > 0) {
+                        tasks = data.tasks.map(t => {
+                            const formatted = { ...t };
+                            window.customActions.forEach(a => { formatted[a.id] = formatted[a.id] === true; });
+                            if (formatted.type === 'study' && !formatted.trackTasks) {
+                                formatted.trackTasks = {};
+                            }
+                            return formatted;
+                        });
+
+                        const lastTask = tasks[tasks.length - 1];
+                        if (lastTask && lastTask.id) {
+                            const newEndDate = new Date(PLAN_START_DATE.getTime());
+                            newEndDate.setDate(newEndDate.getDate() + (lastTask.id - 1));
+                            PLAN_END_DATE = newEndDate;
+                        }
+                    }
+                    
+                    window.localDataJSON = JSON.stringify(data);
+                    return true;
+                }
+            } catch (err) {
+                console.error("Error loading from localStorage:", err);
+            }
+            return false;
+        }
+
         async function initializeFirebase() {
+            // First load from localStorage to populate UI immediately and ensure zero latency / offline support
+            const hasLocalData = loadLocalData();
+            if (hasLocalData) {
+                renderUI();
+            }
+
             try {
                 if (Object.keys(firebaseConfig).length > 0) {
                     const app = initializeApp(firebaseConfig);
@@ -373,8 +453,16 @@
                     });
 
                     if (initialAuthToken) await signInWithCustomToken(auth, initialAuthToken);
-                } else { renderUI(); }
-            } catch (error) { renderUI(); }
+                } else { 
+                    if (!hasLocalData) {
+                        renderUI();
+                    }
+                }
+            } catch (error) { 
+                if (!hasLocalData) {
+                    renderUI(); 
+                }
+            }
         }
 
         async function getTasksRef() {
@@ -461,6 +549,14 @@
                     tasks = newTasks;
                     window.localDataJSON = newTasksJSON;
 
+                    // Keep localStorage updated with Firebase data
+                    try {
+                        const localKey = `study_dashboard_data_${appId}`;
+                        localStorage.setItem(localKey, window.localDataJSON);
+                    } catch (err) {
+                        console.error("Failed to update localStorage with Firebase data:", err);
+                    }
+
                     if (isInitialLoad) { renderUI(); isInitialLoad = false; }
                     else {
                         requestAnimationFrame(() => {
@@ -509,8 +605,6 @@
         };
 
         async function saveTasks(immediate = false) {
-            if (!db || !userId) return;
-
             const payload = {
                 tasks: tasks,
                 customSyllabus: syllabusStructure,
@@ -525,6 +619,23 @@
                 subjectColors: subjectColors
             };
             window.localDataJSON = JSON.stringify(payload);
+
+            // ALWAYS persist to localStorage as a robust local backup & offline storage
+            try {
+                const localKey = `study_dashboard_data_${appId}`;
+                localStorage.setItem(localKey, window.localDataJSON);
+            } catch (err) {
+                console.error("Failed to save to localStorage:", err);
+            }
+
+            if (!db || !userId) {
+                // Local only mode: show instant sync visual feedback
+                showSync('saving');
+                setTimeout(() => {
+                    showSync('saved');
+                }, 300);
+                return;
+            }
 
             const executeSave = async () => {
                 if (isSaving) { needsSave = true; return; }

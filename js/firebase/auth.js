@@ -13,6 +13,15 @@ async function initializeFirebase() {
     // First load from localStorage to populate UI immediately in memory and ensure zero latency / offline support
     const hasLocalData = window.loadLocalData();
 
+    // Safety timeout: auto-unlock and render from localStorage cache if Firebase/network is taking too long
+    setTimeout(() => {
+        if (window.isAppLoading) {
+            console.warn("Firebase snapshot took too long or offline. Falling back to local data and unlocking UI.");
+            window.isAppLoading = false;
+            if (typeof window.renderUI === 'function') window.renderUI();
+        }
+    }, 3500);
+
     try {
         if (Object.keys(window.firebaseConfig).length > 0) {
             const app = initializeApp(window.firebaseConfig);

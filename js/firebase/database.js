@@ -41,157 +41,180 @@ async function loadTasks() {
     if (!window.db || !window.userId) { 
         window.isAppLoading = false;
         if (typeof window.renderUI === 'function') window.renderUI(); 
-        return; 
+        return Promise.resolve(); 
     }
     try {
         const tasksRef = await getTasksRef();
-        onSnapshot(tasksRef, (docSnap) => {
-            let newTasks = window.tasks;
-            if (docSnap.exists()) {
-                const data = docSnap.data();
-                const cloudUpdatedAt = data.updatedAt || 0;
-                const localUpdatedAt = window.updatedAt || 0;
+        return new Promise((resolve) => {
+            let isFirstSnapshot = true;
+            onSnapshot(tasksRef, (docSnap) => {
+                let newTasks = window.tasks;
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    const cloudUpdatedAt = data.updatedAt || 0;
+                    const localUpdatedAt = window.updatedAt || 0;
 
-                console.log(`Synchronization Sync Snapshot received. Cloud updatedAt: ${cloudUpdatedAt}, Local updatedAt: ${localUpdatedAt}`);
+                    console.log(`Synchronization Sync Snapshot received. Cloud updatedAt: ${cloudUpdatedAt}, Local updatedAt: ${localUpdatedAt}`);
 
-                // Merge Conflict Resolution Engine
-                if (cloudUpdatedAt >= localUpdatedAt) {
-                    console.log("Cloud state is newer or equal. Merging cloud state into active state.");
-                    window.updatedAt = cloudUpdatedAt;
+                    const hasCloudData = (
+                        (data.customPrograms && Object.keys(data.customPrograms).length > 0) ||
+                        (data.customTracks && data.customTracks.length > 0) ||
+                        (data.customActions && data.customActions.length > 0) ||
+                        (data.customSyllabus && Object.keys(data.customSyllabus).length > 0) ||
+                        (data.tasks && data.tasks.length > 0)
+                    );
 
-                    if (data.customTracks) window.customTracks = data.customTracks;
-                    if (data.customPrograms) window.customPrograms = data.customPrograms;
-                    if (data.customActions) window.customActions = data.customActions;
-                    if (typeof window.updateTrackDropdowns === 'function') window.updateTrackDropdowns();
+                    const hasLocalData = typeof window.hasLocalDataLoaded === 'function' && window.hasLocalDataLoaded();
 
-                    if (data.paceGoals) window.paceGoals = data.paceGoals;
-                    else window.paceGoals = [];
+                    // Merge Conflict Resolution Engine
+                    if (hasLocalData && !hasCloudData) {
+                        console.log("Cloud state is empty/blank but active local state exists. Preserving local state and uploading upstream.");
+                        window.isAppLoading = false; // Temporarily unlock to let saveTasks succeed
+                        saveTasks(true);
+                    } else if (cloudUpdatedAt >= localUpdatedAt || !hasLocalData) {
+                        console.log("Cloud state is newer/equal or local state is empty. Merging cloud state into active state.");
+                        window.updatedAt = cloudUpdatedAt;
 
-                    if (data.passedItems) window.passedItems = data.passedItems;
-                    else window.passedItems = { programs: [], subjects: [] };
+                        if (data.customTracks) window.customTracks = data.customTracks;
+                        if (data.customPrograms) window.customPrograms = data.customPrograms;
+                        if (data.customActions) window.customActions = data.customActions;
+                        if (typeof window.updateTrackDropdowns === 'function') window.updateTrackDropdowns();
 
-                    if (data.revisionData) window.revisionData = data.revisionData;
-                    else window.revisionData = { active: [], progress: {} };
+                        if (data.paceGoals) window.paceGoals = data.paceGoals;
+                        else window.paceGoals = [];
 
-                    if (data.subjectTimeLinks) window.subjectTimeLinks = data.subjectTimeLinks;
-                    else window.subjectTimeLinks = {};
+                        if (data.passedItems) window.passedItems = data.passedItems;
+                        else window.passedItems = { programs: [], subjects: [] };
 
-                    if (data.successResults) window.successResults = data.successResults;
-                    else window.successResults = [];
+                        if (data.revisionData) window.revisionData = data.revisionData;
+                        else window.revisionData = { active: [], progress: {} };
 
-                    if (data.subjectColors) {
-                        Object.assign(window.subjectColors, data.subjectColors);
-                    }
+                        if (data.subjectTimeLinks) window.subjectTimeLinks = data.subjectTimeLinks;
+                        else window.subjectTimeLinks = {};
 
-                    if (data.dashboardConfig) {
-                        window.dashboardConfig = data.dashboardConfig;
-                        if (window.safeSetText) {
-                            window.safeSetText('dash-top-tag', window.dashboardConfig.topTag || '');
-                            window.safeSetText('dash-main-title', window.dashboardConfig.mainTitle || '');
-                            window.safeSetText('dash-sub-title', window.dashboardConfig.subTitle || '');
+                        if (data.successResults) window.successResults = data.successResults;
+                        else window.successResults = [];
+
+                        if (data.subjectColors) {
+                            Object.assign(window.subjectColors, data.subjectColors);
                         }
-                        document.title = `${window.dashboardConfig.topTag || ''} - ${window.dashboardConfig.mainTitle || ''}`;
-                    }
 
-                    if (data.customSyllabus) {
-                        window.syllabusStructure = data.customSyllabus;
-                        Object.keys(window.syllabusStructure).forEach(trackId => {
-                            window.syllabusStructure[trackId].forEach(s => { if (!s.program) s.program = "Default"; });
-                        });
-                        if (typeof window.recalculateTotals === 'function') window.recalculateTotals();
-                        if (window.isInitialLoad && typeof window.switchSysTab === 'function') window.switchSysTab('track');
-                    }
-
-                    if (data.tasks && data.tasks.length > 0) {
-                        newTasks = data.tasks.map(t => {
-                            const formatted = { ...t };
-                            if (window.customActions) {
-                                window.customActions.forEach(a => { formatted[a.id] = formatted[a.id] === true; });
+                        if (data.dashboardConfig) {
+                            window.dashboardConfig = data.dashboardConfig;
+                            if (window.safeSetText) {
+                                window.safeSetText('dash-top-tag', window.dashboardConfig.topTag || '');
+                                window.safeSetText('dash-main-title', window.dashboardConfig.mainTitle || '');
+                                window.safeSetText('dash-sub-title', window.dashboardConfig.subTitle || '');
                             }
-                            if (formatted.type === 'study' && !formatted.trackTasks) {
-                                formatted.trackTasks = {};
-                            }
-                            return formatted;
-                        });
-
-                        const lastTask = newTasks[newTasks.length - 1];
-                        if (lastTask && lastTask.id) {
-                            const newEndDate = new Date(window.PLAN_START_DATE.getTime());
-                            newEndDate.setDate(newEndDate.getDate() + (lastTask.id - 1));
-                            window.PLAN_END_DATE = newEndDate;
+                            document.title = `${window.dashboardConfig.topTag || ''} - ${window.dashboardConfig.mainTitle || ''}`;
                         }
+
+                        if (data.customSyllabus) {
+                            window.syllabusStructure = data.customSyllabus;
+                            Object.keys(window.syllabusStructure).forEach(trackId => {
+                                window.syllabusStructure[trackId].forEach(s => { if (!s.program) s.program = "Default"; });
+                            });
+                            if (typeof window.recalculateTotals === 'function') window.recalculateTotals();
+                            if (window.isInitialLoad && typeof window.switchSysTab === 'function') window.switchSysTab('track');
+                        }
+
+                        if (data.tasks && data.tasks.length > 0) {
+                            newTasks = data.tasks.map(t => {
+                                const formatted = { ...t };
+                                if (window.customActions) {
+                                    window.customActions.forEach(a => { formatted[a.id] = formatted[a.id] === true; });
+                                }
+                                if (formatted.type === 'study' && !formatted.trackTasks) {
+                                    formatted.trackTasks = {};
+                                }
+                                return formatted;
+                            });
+
+                            const lastTask = newTasks[newTasks.length - 1];
+                            if (lastTask && lastTask.id) {
+                                const newEndDate = new Date(window.PLAN_START_DATE.getTime());
+                                newEndDate.setDate(newEndDate.getDate() + (lastTask.id - 1));
+                                window.PLAN_END_DATE = newEndDate;
+                            }
+                        } else {
+                            newTasks = [];
+                        }
+                        window.tasks = newTasks;
                     } else {
-                        newTasks = [];
+                        console.log("Local/InMemory state is newer than cloud state. Preserving local state and uploading upstream.");
+                        window.isAppLoading = false; // Temporarily unlock to let saveTasks succeed
+                        saveTasks(true);
                     }
-                    window.tasks = newTasks;
                 } else {
-                    console.log("Local/InMemory state is newer than cloud state. Preserving local state and uploading upstream.");
-                    // Keep in-memory/local state and immediately trigger upstream sync
-                    window.isAppLoading = false; // Temporarily unlock to let saveTasks succeed
-                    saveTasks(true);
-                    window.isAppLoading = false;
-                    return;
+                    console.log("Cloud document does not exist yet.");
+                    if (typeof window.hasLocalDataLoaded === 'function' && window.hasLocalDataLoaded()) {
+                        console.log("Active local backup exists. Syncing local backup upstream...");
+                        window.isAppLoading = false; // Temporarily unlock to let saveTasks succeed
+                        saveTasks(true);
+                    } else {
+                        console.log("No cloud or local state exists. Initializing clean empty state.");
+                        window.isAppLoading = false; // Temporarily unlock to let saveTasks succeed
+                        saveTasks(true);
+                    }
                 }
-            } else {
-                console.log("Cloud document does not exist yet.");
-                if (window.updatedAt > 0 || window.tasks.length > 0) {
-                    console.log("Active local backup exists. Syncing local backup upstream...");
-                    window.isAppLoading = false; // Temporarily unlock to let saveTasks succeed
-                    saveTasks(true);
-                } else {
-                    console.log("No cloud or local state exists. Initializing clean empty state.");
-                    window.isAppLoading = false; // Temporarily unlock to let saveTasks succeed
-                    saveTasks(true);
+
+                const currentPayload = {
+                    updatedAt: window.updatedAt,
+                    tasks: window.tasks,
+                    customTracks: window.customTracks,
+                    customSyllabus: window.syllabusStructure,
+                    customPrograms: window.customPrograms,
+                    customActions: window.customActions,
+                    paceGoals: window.paceGoals,
+                    passedItems: window.passedItems,
+                    revisionData: window.revisionData,
+                    subjectTimeLinks: window.subjectTimeLinks,
+                    successResults: window.successResults,
+                    dashboardConfig: window.dashboardConfig,
+                    subjectColors: window.subjectColors
+                };
+                window.localDataJSON = JSON.stringify(currentPayload);
+
+                // ALWAYS persist to localStorage under both standard and legacy keys
+                try {
+                    localStorage.setItem("projectx_data", window.localDataJSON);
+                    const legacyKey = `study_dashboard_data_${window.appId}`;
+                    localStorage.setItem(legacyKey, window.localDataJSON);
+                } catch (err) {
+                    console.error("Failed to update localStorage with Firebase data:", err);
                 }
-            }
 
-            const currentPayload = {
-                updatedAt: window.updatedAt,
-                tasks: window.tasks,
-                customTracks: window.customTracks,
-                customSyllabus: window.syllabusStructure,
-                customPrograms: window.customPrograms,
-                customActions: window.customActions,
-                paceGoals: window.paceGoals,
-                passedItems: window.passedItems,
-                revisionData: window.revisionData,
-                subjectTimeLinks: window.subjectTimeLinks,
-                successResults: window.successResults,
-                dashboardConfig: window.dashboardConfig,
-                subjectColors: window.subjectColors
-            };
-            window.localDataJSON = JSON.stringify(currentPayload);
+                // Release loading lock now that active state has been finalized and merged
+                window.isAppLoading = false;
 
-            // ALWAYS persist to localStorage under both standard and legacy keys
-            try {
-                localStorage.setItem("projectx_data", window.localDataJSON);
-                const legacyKey = `study_dashboard_data_${window.appId}`;
-                localStorage.setItem(legacyKey, window.localDataJSON);
-            } catch (err) {
-                console.error("Failed to update localStorage with Firebase data:", err);
-            }
-
-            // Release loading lock now that active state has been finalized and merged
-            window.isAppLoading = false;
-
-            if (window.isInitialLoad) {
-                if (typeof window.renderUI === 'function') window.renderUI();
-                window.isInitialLoad = false;
-            } else {
-                requestAnimationFrame(() => {
-                    const scrollPos = window.scrollY; // Preserve scroll position
+                if (window.isInitialLoad) {
                     if (typeof window.renderUI === 'function') window.renderUI();
-                    window.scrollTo(0, scrollPos); // Seamlessly restore scroll
-                    showSync('saved'); // Indicate remote fetch success
-                });
-            }
-        }, (error) => {
-            console.error("Sync listener error:", error);
-            window.isAppLoading = false;
-            if (window.isInitialLoad) {
-                if (typeof window.renderUI === 'function') window.renderUI();
-                window.isInitialLoad = false;
-            }
+                    window.isInitialLoad = false;
+                } else {
+                    requestAnimationFrame(() => {
+                        const scrollPos = window.scrollY; // Preserve scroll position
+                        if (typeof window.renderUI === 'function') window.renderUI();
+                        window.scrollTo(0, scrollPos); // Seamlessly restore scroll
+                        showSync('saved'); // Indicate remote fetch success
+                    });
+                }
+
+                if (isFirstSnapshot) {
+                    isFirstSnapshot = false;
+                    resolve();
+                }
+            }, (error) => {
+                console.error("Sync listener error:", error);
+                window.isAppLoading = false;
+                if (window.isInitialLoad) {
+                    if (typeof window.renderUI === 'function') window.renderUI();
+                    window.isInitialLoad = false;
+                }
+                if (isFirstSnapshot) {
+                    isFirstSnapshot = false;
+                    resolve();
+                }
+            });
         });
     } catch (error) {
         console.error("Load tasks error:", error);
@@ -200,6 +223,7 @@ async function loadTasks() {
             if (typeof window.renderUI === 'function') window.renderUI();
             window.isInitialLoad = false;
         }
+        return Promise.resolve();
     }
 }
 

@@ -76,7 +76,7 @@ function loadLocalData() {
             }
             
             window.localDataJSON = JSON.stringify(data);
-            return true;
+            return hasLocalDataLoaded();
         }
     } catch (err) {
         console.error("Error loading from localStorage:", err);
@@ -84,6 +84,17 @@ function loadLocalData() {
     return false;
 }
 
+function hasLocalDataLoaded() {
+    return (
+        (window.customPrograms && Object.keys(window.customPrograms).length > 0) ||
+        (window.customTracks && window.customTracks.length > 0) ||
+        (window.customActions && window.customActions.length > 0) ||
+        (window.syllabusStructure && Object.keys(window.syllabusStructure).length > 0) ||
+        (window.tasks && window.tasks.length > 0)
+    );
+}
+
+window.hasLocalDataLoaded = hasLocalDataLoaded;
 window.loadLocalData = loadLocalData;
 
-export { loadLocalData };
+export { loadLocalData, hasLocalDataLoaded };

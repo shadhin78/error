@@ -1,0 +1,47 @@
+* {
+    -webkit-tap-highlight-color: transparent;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+    display: none;
+}
+
+.scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 10px;
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #334155;
+}
+
+/* Perfect Mobile Responsiveness Fixes */
+@media (max-width: 639px) {
+
+    input,
+    select,
+    textarea {
+        font-size: 16px !important;
+    }
+
+    /* Prevents iOS auto-zoom on inputs */
+}
+
+.touch-action-manipulation {
+    touch-action: manipulation;
+}
+
+/* Eliminates 300ms tap delay */
